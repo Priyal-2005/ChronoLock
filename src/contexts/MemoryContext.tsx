@@ -16,8 +16,6 @@ export interface VoiceMemory {
   isLocked: boolean;
   audioUrl?: string;
   audioBlob?: Blob;
-  ipfsCid?: string;
-  contractId?: number;
 }
 
 interface MemoryContextType {
@@ -61,15 +59,7 @@ export const MemoryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setIsLoading(true);
     try {
       const userMemories = await storage.getUserMemories(accounts[0]);
-      
-      const memoriesWithDuration = userMemories.map(memory => ({
-        ...memory,
-        unlockDate: new Date(memory.unlockDate),
-        createdDate: new Date(memory.createdDate),
-        duration: memory.duration || 0
-      }));
-
-      setMemories(memoriesWithDuration);
+      setMemories(userMemories);
     } catch (error) {
       console.error('Failed to load memories:', error);
     } finally {
@@ -88,7 +78,7 @@ export const MemoryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     setIsLoading(true);
     try {
-      // Store using AlgoNode IPFS + Algorand
+      // Store using localStorage
       const result = await storage.storeVoiceMemory(memoryData.audioBlob, {
         title: memoryData.title,
         note: memoryData.note,
@@ -97,17 +87,9 @@ export const MemoryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         userAddress: accounts[0]
       });
 
-      // Create local memory object
-      const newMemory: VoiceMemory = {
-        ...memoryData,
-        id: result.memoryId,
-        createdDate: new Date(),
-        isLocked: new Date() < memoryData.unlockDate,
-        ipfsCid: result.ipfsCid,
-        contractId: result.contractId
-      };
-
-      setMemories(prev => [newMemory, ...prev]);
+      // Refresh memories to get the updated list
+      await refreshMemories();
+      
       return result.memoryId;
 
     } catch (error) {

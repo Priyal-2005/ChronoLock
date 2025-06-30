@@ -1,38 +1,10 @@
-import { EncryptionManager } from './encryption';
-import { AlgorandManager } from './algorand';
-
 export interface StorageResult {
   memoryId: string;
-  ipfsCid: string;
-  contractId: number;
-  encryptionKey: string; // Base64 encoded key
 }
 
 export class ChronoLockStorage {
-  private algorand: AlgorandManager;
-
-  constructor() {
-    this.algorand = new AlgorandManager();
-  }
-
   /**
-   * Helper function to convert Uint8Array to binary string in chunks
-   * to avoid call stack overflow for large arrays
-   */
-  private uint8ArrayToBinaryString(uint8Array: Uint8Array): string {
-    const chunkSize = 8192; // Process in 8KB chunks
-    let binaryString = '';
-    
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      const chunk = uint8Array.slice(i, i + chunkSize);
-      binaryString += String.fromCharCode(...chunk);
-    }
-    
-    return binaryString;
-  }
-
-  /**
-   * Store a voice memory with full encryption and blockchain integration
+   * Store a voice memory using localStorage
    */
   async storeVoiceMemory(
     audioBlob: Blob,
@@ -45,65 +17,31 @@ export class ChronoLockStorage {
     }
   ): Promise<StorageResult> {
     try {
-      // 1. Generate encryption key
-      const encryptionKey = await EncryptionManager.generateKey();
-      const keyBytes = await EncryptionManager.exportKey(encryptionKey);
+      // Generate unique memory ID
+      const memoryId = this.generateMemoryId();
 
-      // 2. Encrypt the audio
-      const { encryptedData, iv } = await EncryptionManager.encryptAudio(audioBlob, encryptionKey);
+      // Convert audio blob to base64 for localStorage
+      const audioBase64 = await this.blobToBase64(audioBlob);
 
-      // 3. Convert encrypted data and IV to base64 for transmission using chunked conversion
-      const encryptedAudioBase64 = btoa(this.uint8ArrayToBinaryString(encryptedData));
-      const encryptionIvBase64 = btoa(this.uint8ArrayToBinaryString(iv));
-
-      // 4. Send to Netlify function for IPFS upload and contract creation
-      const response = await fetch('/.netlify/functions/upload-memory', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: metadata.title,
-          note: metadata.note,
-          unlockDate: metadata.unlockDate.toISOString(),
-          encryptedAudio: encryptedAudioBase64,
-          encryptionIv: encryptionIvBase64,
-          emotion: metadata.emotion,
-          userAddress: metadata.userAddress
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'Upload failed');
-      }
-
-      // 5. Store local reference (for quick access)
-      this.storeLocalReference({
-        id: result.memoryId,
+      // Store memory data
+      const memoryData = {
+        id: memoryId,
         title: metadata.title,
         note: metadata.note,
-        unlockDate: metadata.unlockDate,
-        createdDate: new Date(),
+        unlockDate: metadata.unlockDate.toISOString(),
+        createdDate: new Date().toISOString(),
         emotion: metadata.emotion,
-        ipfsCid: result.ipfsCid,
-        contractId: result.contractId,
-        encryptionKey: btoa(this.uint8ArrayToBinaryString(keyBytes)), // Store as base64
-        encryptionIv: encryptionIvBase64,
-        userAddress: metadata.userAddress
-      });
+        userAddress: metadata.userAddress,
+        audioData: audioBase64,
+        duration: await this.getAudioDuration(audioBlob),
+        isLocked: new Date() < metadata.unlockDate
+      };
+
+      // Store in localStorage
+      this.storeLocalReference(memoryData);
 
       return {
-        memoryId: result.memoryId,
-        ipfsCid: result.ipfsCid,
-        contractId: result.contractId,
-        encryptionKey: btoa(this.uint8ArrayToBinaryString(keyBytes))
+        memoryId
       };
 
     } catch (error) {
@@ -113,7 +51,7 @@ export class ChronoLockStorage {
   }
 
   /**
-   * Retrieve and decrypt a voice memory
+   * Retrieve a voice memory from localStorage
    */
   async retrieveVoiceMemory(memoryId: string): Promise<{
     audioBlob: Blob;
@@ -121,44 +59,31 @@ export class ChronoLockStorage {
     isUnlocked: boolean;
   }> {
     try {
-      // 1. Get local reference
-      const localRef = this.getLocalReference(memoryId);
-      if (!localRef) {
+      // Get memory from localStorage
+      const memoryData = this.getLocalReference(memoryId);
+      if (!memoryData) {
         throw new Error('Memory not found');
       }
 
-      // 2. Check if memory is unlocked via smart contract
-      const isUnlocked = await this.algorand.isMemoryUnlocked(localRef.contractId);
+      // Check if memory is unlocked
+      const unlockDate = new Date(memoryData.unlockDate);
+      const isUnlocked = new Date() >= unlockDate;
       
       if (!isUnlocked) {
         throw new Error('Memory is still time-locked');
       }
 
-      // 3. Retrieve encrypted data from IPFS
-      const encryptedBlob = await this.retrieveFromIPFS(localRef.ipfsCid);
-
-      // 4. Decrypt the audio
-      const keyBytes = new Uint8Array(
-        atob(localRef.encryptionKey).split('').map(char => char.charCodeAt(0))
-      );
-      const encryptionKey = await EncryptionManager.importKey(keyBytes);
-      
-      // Parse IV from base64
-      const iv = new Uint8Array(
-        atob(localRef.encryptionIv).split('').map(char => char.charCodeAt(0))
-      );
-
-      const encryptedData = new Uint8Array(await encryptedBlob.arrayBuffer());
-      const audioBlob = await EncryptionManager.decryptAudio(encryptedData, encryptionKey, iv);
+      // Convert base64 back to blob
+      const audioBlob = await this.base64ToBlob(memoryData.audioData, 'audio/wav');
 
       return {
         audioBlob,
         metadata: {
-          title: localRef.title,
-          note: localRef.note,
-          emotion: localRef.emotion,
-          createdDate: localRef.createdDate,
-          unlockDate: localRef.unlockDate
+          title: memoryData.title,
+          note: memoryData.note,
+          emotion: memoryData.emotion,
+          createdDate: new Date(memoryData.createdDate),
+          unlockDate: unlockDate
         },
         isUnlocked: true
       };
@@ -174,29 +99,28 @@ export class ChronoLockStorage {
    */
   async getUserMemories(userAddress: string): Promise<any[]> {
     try {
-      const localRefs = this.getAllLocalReferences()
+      const allMemories = this.getAllLocalReferences()
         .filter(ref => ref.userAddress === userAddress);
 
-      const memories = await Promise.all(
-        localRefs.map(async (ref) => {
-          const isUnlocked = await this.algorand.isMemoryUnlocked(ref.contractId);
-          
-          return {
-            id: ref.id,
-            title: ref.title,
-            note: ref.note,
-            unlockDate: ref.unlockDate,
-            createdDate: ref.createdDate,
-            emotion: ref.emotion,
-            isLocked: !isUnlocked,
-            ipfsCid: ref.ipfsCid,
-            contractId: ref.contractId
-          };
-        })
-      );
+      const currentTime = new Date();
+      
+      const memories = allMemories.map(memory => ({
+        id: memory.id,
+        title: memory.title,
+        note: memory.note,
+        unlockDate: new Date(memory.unlockDate),
+        createdDate: new Date(memory.createdDate),
+        emotion: memory.emotion,
+        duration: memory.duration || 0,
+        isLocked: currentTime < new Date(memory.unlockDate),
+        // Create audio URL for unlocked memories
+        audioUrl: currentTime >= new Date(memory.unlockDate) 
+          ? this.createAudioUrl(memory.audioData) 
+          : undefined
+      }));
 
       return memories.sort((a, b) => 
-        new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime()
+        b.createdDate.getTime() - a.createdDate.getTime()
       );
 
     } catch (error) {
@@ -206,17 +130,43 @@ export class ChronoLockStorage {
   }
 
   // Private helper methods
-  private async retrieveFromIPFS(cid: string): Promise<Blob> {
-    try {
-      const response = await fetch(`https://ipfs.algonode.xyz/ipfs/${cid}`);
-      if (!response.ok) {
-        throw new Error(`Failed to retrieve from IPFS: ${response.status}`);
-      }
-      return await response.blob();
-    } catch (error) {
-      console.error('IPFS retrieval error:', error);
-      throw error;
+  private async blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove the data URL prefix (e.g., "data:audio/wav;base64,")
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  private async base64ToBlob(base64: string, mimeType: string): Promise<Blob> {
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Array(byteCharacters.length);
+    
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
+    
+    const byteArray = new Uint8Array(byteNumbers);
+    return new Blob([byteArray], { type: mimeType });
+  }
+
+  private createAudioUrl(audioBase64: string): string {
+    const byteCharacters = atob(audioBase64);
+    const byteNumbers = new Array(byteCharacters.length);
+    
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'audio/wav' });
+    return URL.createObjectURL(blob);
   }
 
   private async getAudioDuration(audioBlob: Blob): Promise<number> {
@@ -235,20 +185,20 @@ export class ChronoLockStorage {
     return `memory_${Date.now()}_${Math.random().toString(36).substring(2)}`;
   }
 
-  private storeLocalReference(ref: any): void {
-    const refs = this.getAllLocalReferences();
-    refs.push(ref);
-    localStorage.setItem('chronolock_memory_refs', JSON.stringify(refs));
+  private storeLocalReference(memoryData: any): void {
+    const memories = this.getAllLocalReferences();
+    memories.push(memoryData);
+    localStorage.setItem('chronolock_memories', JSON.stringify(memories));
   }
 
   private getLocalReference(memoryId: string): any {
-    const refs = this.getAllLocalReferences();
-    return refs.find(ref => ref.id === memoryId);
+    const memories = this.getAllLocalReferences();
+    return memories.find(memory => memory.id === memoryId);
   }
 
   private getAllLocalReferences(): any[] {
     try {
-      const stored = localStorage.getItem('chronolock_memory_refs');
+      const stored = localStorage.getItem('chronolock_memories');
       return stored ? JSON.parse(stored) : [];
     } catch {
       return [];
