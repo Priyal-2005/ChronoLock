@@ -1,4 +1,3 @@
-import { AlgoNodeIPFS } from './ipfs';
 import { EncryptionManager } from './encryption';
 import { AlgorandManager } from './algorand';
 
@@ -37,54 +36,57 @@ export class ChronoLockStorage {
       // 2. Encrypt the audio
       const { encryptedData, iv } = await EncryptionManager.encryptAudio(audioBlob, encryptionKey);
 
-      // 3. Create encrypted blob
-      const encryptedBlob = new Blob([encryptedData], { type: 'application/octet-stream' });
+      // 3. Convert encrypted data and IV to base64 for transmission
+      const encryptedAudioBase64 = btoa(String.fromCharCode(...encryptedData));
+      const encryptionIvBase64 = btoa(String.fromCharCode(...iv));
 
-      // 4. Prepare metadata for IPFS
-      const ipfsMetadata = {
-        title: metadata.title,
-        note: metadata.note,
-        emotion: metadata.emotion,
-        createdAt: new Date().toISOString(),
-        encryptionIv: Array.from(iv).toString(), // Store IV as comma-separated string
-        duration: await this.getAudioDuration(audioBlob),
-        originalSize: audioBlob.size,
-        encryptedSize: encryptedData.length
-      };
+      // 4. Send to Netlify function for IPFS upload and contract creation
+      const response = await fetch('/.netlify/functions/upload-memory', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: metadata.title,
+          note: metadata.note,
+          unlockDate: metadata.unlockDate.toISOString(),
+          encryptedAudio: encryptedAudioBase64,
+          encryptionIv: encryptionIvBase64,
+          emotion: metadata.emotion,
+          userAddress: metadata.userAddress
+        })
+      });
 
-      // 5. Upload to IPFS via AlgoNode
-      const ipfsResult = await AlgoNodeIPFS.uploadAudio(encryptedBlob, ipfsMetadata);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
 
-      // 6. Create Algorand smart contract
-      const unlockTimestamp = Math.floor(metadata.unlockDate.getTime() / 1000);
-      const contractId = await this.algorand.createVoiceMemoryContract(
-        metadata.userAddress,
-        unlockTimestamp,
-        ipfsResult.cid,
-        metadata.emotion
-      );
+      const result = await response.json();
 
-      // 7. Generate memory ID
-      const memoryId = this.generateMemoryId();
+      if (!result.success) {
+        throw new Error(result.error || 'Upload failed');
+      }
 
-      // 8. Store local reference (for quick access)
+      // 5. Store local reference (for quick access)
       this.storeLocalReference({
-        id: memoryId,
+        id: result.memoryId,
         title: metadata.title,
         note: metadata.note,
         unlockDate: metadata.unlockDate,
         createdDate: new Date(),
         emotion: metadata.emotion,
-        ipfsCid: ipfsResult.cid,
-        contractId,
+        ipfsCid: result.ipfsCid,
+        contractId: result.contractId,
         encryptionKey: btoa(String.fromCharCode(...keyBytes)), // Store as base64
+        encryptionIv: encryptionIvBase64,
         userAddress: metadata.userAddress
       });
 
       return {
-        memoryId,
-        ipfsCid: ipfsResult.cid,
-        contractId,
+        memoryId: result.memoryId,
+        ipfsCid: result.ipfsCid,
+        contractId: result.contractId,
         encryptionKey: btoa(String.fromCharCode(...keyBytes))
       };
 
@@ -117,7 +119,7 @@ export class ChronoLockStorage {
       }
 
       // 3. Retrieve encrypted data from IPFS
-      const encryptedBlob = await AlgoNodeIPFS.retrieveAudio(localRef.ipfsCid);
+      const encryptedBlob = await this.retrieveFromIPFS(localRef.ipfsCid);
 
       // 4. Decrypt the audio
       const keyBytes = new Uint8Array(
@@ -125,9 +127,9 @@ export class ChronoLockStorage {
       );
       const encryptionKey = await EncryptionManager.importKey(keyBytes);
       
-      // Parse IV from stored string
+      // Parse IV from base64
       const iv = new Uint8Array(
-        localRef.encryptionIv.split(',').map(num => parseInt(num))
+        atob(localRef.encryptionIv).split('').map(char => char.charCodeAt(0))
       );
 
       const encryptedData = new Uint8Array(await encryptedBlob.arrayBuffer());
@@ -188,6 +190,19 @@ export class ChronoLockStorage {
   }
 
   // Private helper methods
+  private async retrieveFromIPFS(cid: string): Promise<Blob> {
+    try {
+      const response = await fetch(`https://ipfs.algonode.xyz/ipfs/${cid}`);
+      if (!response.ok) {
+        throw new Error(`Failed to retrieve from IPFS: ${response.status}`);
+      }
+      return await response.blob();
+    } catch (error) {
+      console.error('IPFS retrieval error:', error);
+      throw error;
+    }
+  }
+
   private async getAudioDuration(audioBlob: Blob): Promise<number> {
     return new Promise((resolve) => {
       const audio = new Audio();

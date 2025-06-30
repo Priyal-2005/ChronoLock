@@ -21,6 +21,18 @@ interface UploadMemoryResponse {
 }
 
 export const handler: Handler = async (event, context) => {
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS'
+      },
+      body: ''
+    };
+  }
+
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -40,8 +52,8 @@ export const handler: Handler = async (event, context) => {
       };
     }
 
-    // Upload to Filebase (IPFS)
-    const ipfsCid = await uploadToFilebase(encryptedAudio, encryptionIv, {
+    // Upload to AlgoNode IPFS
+    const ipfsCid = await uploadToAlgoNodeIPFS(encryptedAudio, encryptionIv, {
       title,
       note,
       emotion,
@@ -107,25 +119,70 @@ export const handler: Handler = async (event, context) => {
   }
 };
 
-async function uploadToFilebase(
+async function uploadToAlgoNodeIPFS(
   encryptedAudio: string, 
   encryptionIv: string, 
   metadata: any
 ): Promise<string> {
-  const filebaseApiKey = process.env.FILEBASE_API_KEY;
-  const filebaseSecret = process.env.FILEBASE_SECRET;
+  try {
+    // Decode base64 encrypted audio
+    const audioBuffer = Buffer.from(encryptedAudio, 'base64');
+    const fileName = `voice-memory-${Date.now()}.encrypted`;
 
-  if (!filebaseApiKey || !filebaseSecret) {
-    throw new Error('Filebase credentials not configured');
+    // Create FormData for IPFS upload
+    const formData = new FormData();
+    
+    // Create a blob from the buffer
+    const audioBlob = new Blob([audioBuffer], { type: 'application/octet-stream' });
+    formData.append('file', audioBlob, fileName);
+
+    // Add metadata as a separate file
+    const metadataWithIv = {
+      ...metadata,
+      encryptionIv: encryptionIv
+    };
+    const metadataBlob = new Blob([JSON.stringify(metadataWithIv)], { type: 'application/json' });
+    formData.append('file', metadataBlob, `${fileName}.metadata.json`);
+
+    // Upload to AlgoNode IPFS
+    const response = await fetch('https://ipfs.algonode.xyz/api/v0/add?wrap-with-directory=true', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      throw new Error(`IPFS upload failed: ${response.status} ${response.statusText}`);
+    }
+
+    const responseText = await response.text();
+    const lines = responseText.trim().split('\n');
+    
+    // Parse each line as JSON and find the directory hash
+    let directoryCid = '';
+    for (const line of lines) {
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed.Name === '') {
+          // This is the directory entry
+          directoryCid = parsed.Hash;
+          break;
+        }
+      } catch (e) {
+        // Skip invalid JSON lines
+        continue;
+      }
+    }
+
+    if (!directoryCid) {
+      throw new Error('Failed to get directory CID from IPFS response');
+    }
+
+    return directoryCid;
+
+  } catch (error) {
+    console.error('AlgoNode IPFS upload error:', error);
+    throw new Error(`Failed to upload to IPFS: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-
-  // Create FormData for file upload
-  const audioBuffer = Buffer.from(encryptedAudio, 'base64');
-  const fileName = `voice-memory-${Date.now()}.encrypted`;
-
-  // In production, use Filebase S3-compatible API
-  // For now, return a mock CID
-  return `Qm${Math.random().toString(36).substring(2)}`;
 }
 
 async function createAlgorandContract(
