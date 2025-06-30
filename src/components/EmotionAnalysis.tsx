@@ -99,106 +99,140 @@ const EmotionAnalysis: React.FC<EmotionAnalysisProps> = ({ audioBlob, onAnalysis
       breathingPatterns
     } = features;
 
-    // Normalize features to 0-1 range
-    const normalizedAmplitude = Math.min(averageAmplitude * 10, 1);
-    const normalizedVariance = Math.min(energyVariance * 5, 1);
-    const normalizedZCR = Math.min(zeroCrossingRate / 0.1, 1);
-    const normalizedCentroid = Math.min(spectralCentroid / 4000, 1);
-    const normalizedTempo = Math.min(tempo / 200, 1);
-    const normalizedPitchVar = Math.min(pitchVariation * 2, 1);
-    const normalizedLowFreq = Math.min(lowFrequencyEnergy * 3, 1);
-    const normalizedHighFreq = Math.min(highFrequencyEnergy * 3, 1);
-    const normalizedStability = Math.min(voiceStability * 2, 1);
+    // Normalize features to 0-1 range with better scaling
+    const normalizedAmplitude = Math.min(Math.max(averageAmplitude * 20, 0), 1);
+    const normalizedVariance = Math.min(Math.max(energyVariance * 10, 0), 1);
+    const normalizedZCR = Math.min(Math.max(zeroCrossingRate / 0.05, 0), 1);
+    const normalizedCentroid = Math.min(Math.max(spectralCentroid / 2000, 0), 1);
+    const normalizedTempo = Math.min(Math.max(tempo / 100, 0), 1);
+    const normalizedPitchVar = Math.min(Math.max(pitchVariation * 5, 0), 1);
+    const normalizedLowFreq = Math.min(Math.max(lowFrequencyEnergy * 10, 0), 1);
+    const normalizedHighFreq = Math.min(Math.max(highFrequencyEnergy * 10, 0), 1);
+    const normalizedStability = Math.min(Math.max(voiceStability * 3, 0), 1);
 
-    // Comprehensive emotion detection logic
-    let emotion = 'Neutral';
-    let intensity = 0.5;
+    // Create emotion scores based on feature combinations
+    const emotionScores = {
+      // Positive emotions
+      'Joyful': calculateJoyfulScore(normalizedAmplitude, normalizedTempo, normalizedHighFreq, normalizedStability),
+      'Excited': calculateExcitedScore(normalizedAmplitude, normalizedTempo, normalizedVariance, normalizedPitchVar),
+      'Hopeful': calculateHopefulScore(normalizedAmplitude, normalizedCentroid, normalizedStability, normalizedHighFreq),
+      'Grateful': calculateGratefulScore(normalizedAmplitude, normalizedStability, normalizedLowFreq, silenceRatio),
+      'Peaceful': calculatePeacefulScore(normalizedAmplitude, normalizedStability, silenceRatio, normalizedVariance),
+      'Determined': calculateDeterminedScore(normalizedAmplitude, normalizedStability, normalizedTempo, normalizedZCR),
+      
+      // Contemplative emotions
+      'Nostalgic': calculateNostalgicScore(normalizedAmplitude, normalizedTempo, silenceRatio, normalizedStability),
+      'Contemplative': calculateContemplativeScore(normalizedAmplitude, silenceRatio, normalizedStability, normalizedTempo),
+      'Melancholic': calculateMelancholicScore(normalizedAmplitude, normalizedTempo, normalizedStability, silenceRatio),
+      
+      // Challenging emotions
+      'Sad': calculateSadScore(normalizedAmplitude, normalizedTempo, normalizedStability, silenceRatio),
+      'Anxious': calculateAnxiousScore(normalizedVariance, normalizedStability, breathingPatterns, normalizedTempo),
+      'Worried': calculateWorriedScore(normalizedAmplitude, normalizedPitchVar, normalizedStability, normalizedVariance),
+      'Angry': calculateAngryScore(normalizedAmplitude, normalizedVariance, normalizedTempo, normalizedLowFreq),
+      'Frustrated': calculateFrustratedScore(normalizedVariance, normalizedAmplitude, normalizedStability, normalizedTempo),
+      'Confused': calculateConfusedScore(normalizedVariance, normalizedStability, silenceRatio, normalizedPitchVar),
+      'Lonely': calculateLonelyScore(normalizedAmplitude, normalizedTempo, silenceRatio, duration)
+    };
 
-    // SAD: Low energy, low tempo, unstable voice, high silence ratio
-    if (normalizedAmplitude < 0.4 && normalizedTempo < 0.3 && normalizedStability < 0.4 && silenceRatio > 0.4) {
-      emotion = 'Sad';
-      intensity = 0.60 + Math.random() * 0.30;
-    }
-    // ANXIOUS: High variance, unstable voice, fast tempo, irregular breathing
-    else if (normalizedVariance > 0.6 && normalizedStability < 0.3 && normalizedTempo > 0.6 && breathingPatterns > 0.6) {
-      emotion = 'Anxious';
-      intensity = 0.70 + Math.random() * 0.25;
-    }
-    // WORRIED: Moderate energy, high pitch variation, unstable voice, moderate tempo
-    else if (normalizedAmplitude > 0.3 && normalizedAmplitude < 0.6 && normalizedPitchVar > 0.5 && normalizedStability < 0.5) {
-      emotion = 'Worried';
-      intensity = 0.65 + Math.random() * 0.30;
-    }
-    // ANGRY: High energy, high variance, high tempo, high low-frequency energy
-    else if (normalizedAmplitude > 0.7 && normalizedVariance > 0.7 && normalizedTempo > 0.7 && normalizedLowFreq > 0.6) {
-      emotion = 'Angry';
-      intensity = 0.80 + Math.random() * 0.20;
-    }
-    // FRUSTRATED: High energy variance, moderate amplitude, irregular patterns
-    else if (normalizedVariance > 0.6 && normalizedAmplitude > 0.4 && normalizedAmplitude < 0.7 && normalizedStability < 0.4) {
-      emotion = 'Frustrated';
-      intensity = 0.70 + Math.random() * 0.25;
-    }
-    // MELANCHOLIC: Low energy, slow tempo, stable but quiet voice, longer pauses
-    else if (normalizedAmplitude < 0.5 && normalizedTempo < 0.4 && normalizedStability > 0.6 && silenceRatio > 0.3) {
-      emotion = 'Melancholic';
-      intensity = 0.65 + Math.random() * 0.25;
-    }
-    // EXCITED: High energy, high tempo, high amplitude, high pitch variation
-    else if (normalizedAmplitude > 0.6 && normalizedTempo > 0.7 && normalizedVariance > 0.6 && normalizedPitchVar > 0.6) {
-      emotion = 'Excited';
-      intensity = 0.85 + Math.random() * 0.15;
-    }
-    // JOYFUL: High energy, moderate tempo, stable voice, bright tone
-    else if (normalizedAmplitude > 0.6 && normalizedTempo > 0.5 && normalizedStability > 0.5 && normalizedHighFreq > 0.5) {
-      emotion = 'Joyful';
-      intensity = 0.80 + Math.random() * 0.20;
-    }
-    // HOPEFUL: Moderate-high energy, rising pitch patterns, stable delivery
-    else if (normalizedAmplitude > 0.5 && normalizedPitchVar > 0.5 && normalizedStability > 0.6 && normalizedCentroid > 0.5) {
-      emotion = 'Hopeful';
-      intensity = 0.75 + Math.random() * 0.20;
-    }
-    // NOSTALGIC: Moderate energy, slow tempo, stable voice, thoughtful pauses
-    else if (normalizedAmplitude > 0.3 && normalizedAmplitude < 0.6 && normalizedTempo < 0.5 && normalizedStability > 0.5) {
-      emotion = 'Nostalgic';
-      intensity = 0.70 + Math.random() * 0.25;
-    }
-    // PEACEFUL: Low-moderate energy, slow tempo, very stable voice, gentle delivery
-    else if (normalizedAmplitude < 0.6 && normalizedTempo < 0.4 && normalizedStability > 0.7 && normalizedVariance < 0.3) {
-      emotion = 'Peaceful';
-      intensity = 0.65 + Math.random() * 0.25;
-    }
-    // GRATEFUL: Moderate energy, stable voice, warm tone, consistent delivery
-    else if (normalizedAmplitude > 0.4 && normalizedAmplitude < 0.7 && normalizedStability > 0.6 && normalizedVariance < 0.4) {
-      emotion = 'Grateful';
-      intensity = 0.72 + Math.random() * 0.23;
-    }
-    // CONFUSED: Irregular patterns, moderate energy, unstable voice, hesitations
-    else if (normalizedVariance > 0.5 && normalizedStability < 0.4 && silenceRatio > 0.3 && normalizedPitchVar > 0.4) {
-      emotion = 'Confused';
-      intensity = 0.60 + Math.random() * 0.30;
-    }
-    // DETERMINED: Steady energy, stable voice, consistent tempo, clear delivery
-    else if (normalizedAmplitude > 0.5 && normalizedStability > 0.7 && normalizedVariance < 0.4 && normalizedZCR > 0.5) {
-      emotion = 'Determined';
-      intensity = 0.75 + Math.random() * 0.20;
-    }
-    // CONTEMPLATIVE: Moderate energy, thoughtful pauses, stable delivery
-    else if (normalizedAmplitude > 0.3 && normalizedAmplitude < 0.6 && silenceRatio > 0.25 && normalizedStability > 0.6) {
-      emotion = 'Contemplative';
-      intensity = 0.68 + Math.random() * 0.25;
-    }
-    // LONELY: Low energy, slow tempo, quiet voice, long pauses
-    else if (normalizedAmplitude < 0.4 && normalizedTempo < 0.3 && silenceRatio > 0.4 && duration > 20) {
-      emotion = 'Lonely';
-      intensity = 0.65 + Math.random() * 0.30;
-    }
+    // Find the emotion with the highest score
+    const bestEmotion = Object.entries(emotionScores).reduce((best, [emotion, score]) => 
+      score > best.score ? { emotion, score } : best
+    , { emotion: 'Neutral', score: 0 });
 
-    // Ensure intensity is within reasonable bounds
-    intensity = Math.min(Math.max(intensity, 0.5), 1.0);
+    // Add some randomness to prevent always getting the same result
+    const randomFactor = 0.8 + Math.random() * 0.4; // 0.8 to 1.2
+    const finalIntensity = Math.min(Math.max(bestEmotion.score * randomFactor, 0.5), 1.0);
 
-    return { tone: emotion, intensity };
+    return { 
+      tone: bestEmotion.emotion, 
+      intensity: finalIntensity
+    };
+  };
+
+  // Emotion scoring functions
+  const calculateJoyfulScore = (amplitude: number, tempo: number, highFreq: number, stability: number): number => {
+    return (amplitude * 0.3 + tempo * 0.3 + highFreq * 0.2 + stability * 0.2) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateExcitedScore = (amplitude: number, tempo: number, variance: number, pitchVar: number): number => {
+    return (amplitude * 0.25 + tempo * 0.25 + variance * 0.25 + pitchVar * 0.25) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateHopefulScore = (amplitude: number, centroid: number, stability: number, highFreq: number): number => {
+    return (amplitude * 0.2 + centroid * 0.3 + stability * 0.3 + highFreq * 0.2) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateGratefulScore = (amplitude: number, stability: number, lowFreq: number, silenceRatio: number): number => {
+    const silenceScore = Math.max(0, 0.5 - silenceRatio); // Lower silence is better for grateful
+    return (amplitude * 0.25 + stability * 0.35 + lowFreq * 0.2 + silenceScore * 0.2) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculatePeacefulScore = (amplitude: number, stability: number, silenceRatio: number, variance: number): number => {
+    const lowAmplitudeScore = Math.max(0, 0.7 - amplitude); // Lower amplitude is more peaceful
+    const lowVarianceScore = Math.max(0, 0.8 - variance); // Lower variance is more peaceful
+    return (lowAmplitudeScore * 0.3 + stability * 0.3 + silenceRatio * 0.2 + lowVarianceScore * 0.2) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateDeterminedScore = (amplitude: number, stability: number, tempo: number, zcr: number): number => {
+    return (amplitude * 0.25 + stability * 0.35 + tempo * 0.2 + zcr * 0.2) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateNostalgicScore = (amplitude: number, tempo: number, silenceRatio: number, stability: number): number => {
+    const slowTempoScore = Math.max(0, 0.6 - tempo); // Slower tempo is more nostalgic
+    const moderateAmplitudeScore = 1 - Math.abs(amplitude - 0.5); // Moderate amplitude
+    return (moderateAmplitudeScore * 0.3 + slowTempoScore * 0.3 + silenceRatio * 0.2 + stability * 0.2) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateContemplativeScore = (amplitude: number, silenceRatio: number, stability: number, tempo: number): number => {
+    const slowTempoScore = Math.max(0, 0.5 - tempo);
+    const moderateAmplitudeScore = 1 - Math.abs(amplitude - 0.4);
+    return (moderateAmplitudeScore * 0.25 + silenceRatio * 0.35 + stability * 0.25 + slowTempoScore * 0.15) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateMelancholicScore = (amplitude: number, tempo: number, stability: number, silenceRatio: number): number => {
+    const lowAmplitudeScore = Math.max(0, 0.6 - amplitude);
+    const slowTempoScore = Math.max(0, 0.5 - tempo);
+    return (lowAmplitudeScore * 0.3 + slowTempoScore * 0.3 + stability * 0.2 + silenceRatio * 0.2) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateSadScore = (amplitude: number, tempo: number, stability: number, silenceRatio: number): number => {
+    const lowAmplitudeScore = Math.max(0, 0.5 - amplitude);
+    const slowTempoScore = Math.max(0, 0.4 - tempo);
+    const unstableScore = Math.max(0, 0.6 - stability);
+    return (lowAmplitudeScore * 0.3 + slowTempoScore * 0.3 + unstableScore * 0.2 + silenceRatio * 0.2) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateAnxiousScore = (variance: number, stability: number, breathingPatterns: number, tempo: number): number => {
+    const unstableScore = Math.max(0, 0.7 - stability);
+    return (variance * 0.3 + unstableScore * 0.3 + breathingPatterns * 0.2 + tempo * 0.2) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateWorriedScore = (amplitude: number, pitchVar: number, stability: number, variance: number): number => {
+    const moderateAmplitudeScore = 1 - Math.abs(amplitude - 0.5);
+    const unstableScore = Math.max(0, 0.6 - stability);
+    return (moderateAmplitudeScore * 0.25 + pitchVar * 0.25 + unstableScore * 0.25 + variance * 0.25) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateAngryScore = (amplitude: number, variance: number, tempo: number, lowFreq: number): number => {
+    return (amplitude * 0.3 + variance * 0.3 + tempo * 0.2 + lowFreq * 0.2) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateFrustratedScore = (variance: number, amplitude: number, stability: number, tempo: number): number => {
+    const unstableScore = Math.max(0, 0.6 - stability);
+    return (variance * 0.3 + amplitude * 0.25 + unstableScore * 0.25 + tempo * 0.2) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateConfusedScore = (variance: number, stability: number, silenceRatio: number, pitchVar: number): number => {
+    const unstableScore = Math.max(0, 0.7 - stability);
+    return (variance * 0.25 + unstableScore * 0.25 + silenceRatio * 0.25 + pitchVar * 0.25) * (0.8 + Math.random() * 0.4);
+  };
+
+  const calculateLonelyScore = (amplitude: number, tempo: number, silenceRatio: number, duration: number): number => {
+    const lowAmplitudeScore = Math.max(0, 0.5 - amplitude);
+    const slowTempoScore = Math.max(0, 0.4 - tempo);
+    const longDurationScore = Math.min(duration / 30, 1); // Longer recordings might indicate loneliness
+    return (lowAmplitudeScore * 0.3 + slowTempoScore * 0.3 + silenceRatio * 0.2 + longDurationScore * 0.2) * (0.8 + Math.random() * 0.4);
   };
 
   if (error) {
