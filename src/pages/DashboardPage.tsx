@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate, Link, useLocation } from 'react-router-dom';
-import { Clock, Lock, Unlock, Play, Calendar, Heart, Star, Moon } from 'lucide-react';
+import { Clock, Lock, Unlock, Play, Calendar, Heart, Star, Moon, ExternalLink, Copy } from 'lucide-react';
 import { formatDistanceToNow, isAfter } from 'date-fns';
 import { useWallet } from '../contexts/WalletContext';
 import { useMemory } from '../contexts/MemoryContext';
@@ -11,6 +11,7 @@ const DashboardPage: React.FC = () => {
   const location = useLocation();
   const [filter, setFilter] = useState<'all' | 'locked' | 'unlocked'>('all');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [copiedCid, setCopiedCid] = useState<string | null>(null);
 
   if (!isConnected) {
     return <Navigate to="/" replace />;
@@ -98,6 +99,23 @@ const DashboardPage: React.FC = () => {
     return whispers[tone] || 'Emotions flowing like stardust';
   };
 
+  const copyToClipboard = async (text: string, type: 'cid' | 'contract') => {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (type === 'cid') {
+        setCopiedCid(text);
+        setTimeout(() => setCopiedCid(null), 2000);
+      }
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+    }
+  };
+
+  const formatCid = (cid: string) => {
+    if (!cid) return 'N/A';
+    return `${cid.slice(0, 8)}...${cid.slice(-6)}`;
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
       {/* Success Message */}
@@ -118,7 +136,7 @@ const DashboardPage: React.FC = () => {
           Your Celestial Archive
         </h1>
         <p className="text-xl text-starlight-400 max-w-3xl mx-auto font-serif italic poetry-spacing">
-          Messages from your past self, waiting patiently in time's embrace to be discovered anew.
+          Messages from your past self, encrypted and stored on IPFS, waiting patiently in time's embrace to be discovered anew.
         </p>
       </div>
 
@@ -255,6 +273,66 @@ const DashboardPage: React.FC = () => {
                 <p className="text-whisper mt-2 text-xs">
                   {getEmotionWhisper(memory.emotion.tone)}
                 </p>
+              </div>
+
+              {/* IPFS & Blockchain Info */}
+              <div className="mb-6 space-y-3">
+                {memory.ipfsCid && (
+                  <div className="glass-soft p-3 border border-aurora-500/20">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-serif text-starlight-300">IPFS Storage:</span>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => copyToClipboard(memory.ipfsCid!, 'cid')}
+                          className="text-xs text-starlight-400 hover:text-starlight-200 transition-colors"
+                          title="Copy CID"
+                        >
+                          {copiedCid === memory.ipfsCid ? (
+                            <span className="text-aurora-400">Copied!</span>
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </button>
+                        <a
+                          href={`https://ipfs.algonode.xyz/ipfs/${memory.ipfsCid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-starlight-400 hover:text-starlight-200 transition-colors"
+                          title="View on IPFS"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
+                    </div>
+                    <p className="text-xs font-mono text-starlight-400 break-all">
+                      {formatCid(memory.ipfsCid)}
+                    </p>
+                    <p className="text-whisper text-xs mt-1">
+                      Stored on decentralized IPFS network
+                    </p>
+                  </div>
+                )}
+
+                {memory.contractId && (
+                  <div className="glass-soft p-3 border border-cosmos-500/20">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-serif text-starlight-300">Smart Contract:</span>
+                      <button
+                        onClick={() => copyToClipboard(memory.contractId!.toString(), 'contract')}
+                        className="text-xs text-starlight-400 hover:text-starlight-200 transition-colors"
+                        title="Copy Contract ID"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <p className="text-xs font-mono text-starlight-400">
+                      #{memory.contractId}
+                    </p>
+                    <p className="text-whisper text-xs mt-1">
+                      Time-locked on Algorand blockchain
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Dates */}
