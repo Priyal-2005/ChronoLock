@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate, Link, useLocation } from 'react-router-dom';
-import { Clock, Lock, Unlock, Play, Calendar, Heart, Star, Moon, ExternalLink, Copy } from 'lucide-react';
+import { Clock, Lock, Unlock, Play, Calendar, Heart, Star, Moon, ExternalLink, Copy, Database, Globe } from 'lucide-react';
 import { formatDistanceToNow, isAfter } from 'date-fns';
 import { useWallet } from '../contexts/WalletContext';
 import { useMemory } from '../contexts/MemoryContext';
@@ -275,20 +275,23 @@ const DashboardPage: React.FC = () => {
                 </p>
               </div>
 
-              {/* IPFS & Blockchain Info */}
+              {/* IPFS & Blockchain Info - THIS IS WHERE THE CID LINKS ARE */}
               <div className="mb-6 space-y-3">
                 {memory.ipfsCid && (
-                  <div className="glass-soft p-3 border border-aurora-500/20">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-serif text-starlight-300">IPFS Storage:</span>
+                  <div className="glass-soft p-4 border border-aurora-500/20 rounded-xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-2">
+                        <Globe className="h-4 w-4 text-aurora-400" />
+                        <span className="text-sm font-serif text-starlight-300">IPFS Storage</span>
+                      </div>
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={() => copyToClipboard(memory.ipfsCid!, 'cid')}
-                          className="text-xs text-starlight-400 hover:text-starlight-200 transition-colors"
-                          title="Copy CID"
+                          className="p-1 text-starlight-400 hover:text-starlight-200 transition-colors rounded"
+                          title="Copy full CID"
                         >
                           {copiedCid === memory.ipfsCid ? (
-                            <span className="text-aurora-400">Copied!</span>
+                            <span className="text-aurora-400 text-xs font-mono">Copied!</span>
                           ) : (
                             <Copy className="h-3 w-3" />
                           )}
@@ -297,38 +300,45 @@ const DashboardPage: React.FC = () => {
                           href={`https://ipfs.algonode.xyz/ipfs/${memory.ipfsCid}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-starlight-400 hover:text-starlight-200 transition-colors"
-                          title="View on IPFS"
+                          className="p-1 text-starlight-400 hover:text-aurora-400 transition-colors rounded"
+                          title="View on AlgoNode IPFS Gateway"
                         >
                           <ExternalLink className="h-3 w-3" />
                         </a>
                       </div>
                     </div>
-                    <p className="text-xs font-mono text-starlight-400 break-all">
-                      {formatCid(memory.ipfsCid)}
-                    </p>
-                    <p className="text-whisper text-xs mt-1">
-                      Stored on decentralized IPFS network
+                    <div className="bg-white/[0.04] rounded-lg p-3 mb-2">
+                      <p className="text-xs font-mono text-starlight-400 break-all">
+                        {memory.ipfsCid}
+                      </p>
+                    </div>
+                    <p className="text-whisper text-xs">
+                      Permanently stored on the decentralized IPFS network via AlgoNode
                     </p>
                   </div>
                 )}
 
                 {memory.contractId && (
-                  <div className="glass-soft p-3 border border-cosmos-500/20">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-serif text-starlight-300">Smart Contract:</span>
+                  <div className="glass-soft p-4 border border-cosmos-500/20 rounded-xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-2">
+                        <Database className="h-4 w-4 text-cosmos-400" />
+                        <span className="text-sm font-serif text-starlight-300">Smart Contract</span>
+                      </div>
                       <button
                         onClick={() => copyToClipboard(memory.contractId!.toString(), 'contract')}
-                        className="text-xs text-starlight-400 hover:text-starlight-200 transition-colors"
+                        className="p-1 text-starlight-400 hover:text-starlight-200 transition-colors rounded"
                         title="Copy Contract ID"
                       >
                         <Copy className="h-3 w-3" />
                       </button>
                     </div>
-                    <p className="text-xs font-mono text-starlight-400">
-                      #{memory.contractId}
-                    </p>
-                    <p className="text-whisper text-xs mt-1">
+                    <div className="bg-white/[0.04] rounded-lg p-3 mb-2">
+                      <p className="text-xs font-mono text-starlight-400">
+                        Contract #{memory.contractId}
+                      </p>
+                    </div>
+                    <p className="text-whisper text-xs">
                       Time-locked on Algorand blockchain
                     </p>
                   </div>
