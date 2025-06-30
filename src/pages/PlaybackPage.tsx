@@ -111,12 +111,30 @@ const PlaybackPage: React.FC = () => {
 
   const getEmotionColor = (tone: string) => {
     const colors: Record<string, string> = {
+      // Positive emotions
       'Hopeful': 'from-blue-500 to-teal-500',
       'Joyful': 'from-yellow-400 to-orange-500',
-      'Nostalgic': 'from-purple-500 to-pink-500',
+      'Excited': 'from-purple-500 to-pink-500',
+      'Grateful': 'from-amber-500 to-orange-500',
       'Peaceful': 'from-green-400 to-teal-500',
-      'Excited': 'from-red-500 to-pink-500',
-      'Grateful': 'from-amber-500 to-orange-500'
+      'Determined': 'from-indigo-500 to-purple-500',
+      
+      // Contemplative emotions
+      'Nostalgic': 'from-purple-500 to-pink-500',
+      'Contemplative': 'from-gray-500 to-slate-500',
+      'Melancholic': 'from-blue-600 to-indigo-600',
+      
+      // Challenging emotions
+      'Sad': 'from-blue-700 to-blue-800',
+      'Anxious': 'from-red-500 to-orange-500',
+      'Worried': 'from-yellow-600 to-orange-600',
+      'Angry': 'from-red-600 to-red-700',
+      'Frustrated': 'from-orange-600 to-red-600',
+      'Confused': 'from-purple-600 to-indigo-600',
+      'Lonely': 'from-blue-600 to-slate-600',
+      
+      // Neutral
+      'Neutral': 'from-gray-400 to-gray-500'
     };
     return colors[tone] || 'from-gray-400 to-gray-500';
   };

@@ -64,7 +64,11 @@ const EmotionAnalysis: React.FC<EmotionAnalysisProps> = ({ audioBlob, onAnalysis
             spectralCentroid: calculateSpectralCentroid(channelData, sampleRate),
             tempo: estimateTempo(channelData, sampleRate),
             pitchVariation: calculatePitchVariation(channelData),
-            silenceRatio: calculateSilenceRatio(channelData)
+            silenceRatio: calculateSilenceRatio(channelData),
+            lowFrequencyEnergy: calculateLowFrequencyEnergy(channelData),
+            highFrequencyEnergy: calculateHighFrequencyEnergy(channelData),
+            voiceStability: calculateVoiceStability(channelData),
+            breathingPatterns: analyzeBreathingPatterns(channelData, sampleRate)
           };
           
           resolve(features);
@@ -78,7 +82,7 @@ const EmotionAnalysis: React.FC<EmotionAnalysisProps> = ({ audioBlob, onAnalysis
     });
   };
 
-  // Determine emotion based on extracted audio features
+  // Comprehensive emotion determination based on audio features
   const determineEmotionFromFeatures = (features: AudioFeatures): { tone: string; intensity: number } => {
     const {
       averageAmplitude,
@@ -88,7 +92,11 @@ const EmotionAnalysis: React.FC<EmotionAnalysisProps> = ({ audioBlob, onAnalysis
       tempo,
       pitchVariation,
       silenceRatio,
-      duration
+      duration,
+      lowFrequencyEnergy,
+      highFrequencyEnergy,
+      voiceStability,
+      breathingPatterns
     } = features;
 
     // Normalize features to 0-1 range
@@ -98,45 +106,93 @@ const EmotionAnalysis: React.FC<EmotionAnalysisProps> = ({ audioBlob, onAnalysis
     const normalizedCentroid = Math.min(spectralCentroid / 4000, 1);
     const normalizedTempo = Math.min(tempo / 200, 1);
     const normalizedPitchVar = Math.min(pitchVariation * 2, 1);
+    const normalizedLowFreq = Math.min(lowFrequencyEnergy * 3, 1);
+    const normalizedHighFreq = Math.min(highFrequencyEnergy * 3, 1);
+    const normalizedStability = Math.min(voiceStability * 2, 1);
 
-    // Emotion detection logic based on audio characteristics
-    let emotion = 'Peaceful';
+    // Comprehensive emotion detection logic
+    let emotion = 'Neutral';
     let intensity = 0.5;
 
-    // High energy + high tempo + high amplitude = Excited/Joyful
-    if (normalizedAmplitude > 0.6 && normalizedTempo > 0.7 && normalizedVariance > 0.6) {
-      if (normalizedPitchVar > 0.6) {
-        emotion = 'Excited';
-        intensity = 0.85 + Math.random() * 0.15;
-      } else {
-        emotion = 'Joyful';
-        intensity = 0.80 + Math.random() * 0.20;
-      }
+    // SAD: Low energy, low tempo, unstable voice, high silence ratio
+    if (normalizedAmplitude < 0.4 && normalizedTempo < 0.3 && normalizedStability < 0.4 && silenceRatio > 0.4) {
+      emotion = 'Sad';
+      intensity = 0.60 + Math.random() * 0.30;
     }
-    // High pitch variation + moderate energy = Hopeful
-    else if (normalizedPitchVar > 0.5 && normalizedCentroid > 0.5 && normalizedAmplitude > 0.4) {
+    // ANXIOUS: High variance, unstable voice, fast tempo, irregular breathing
+    else if (normalizedVariance > 0.6 && normalizedStability < 0.3 && normalizedTempo > 0.6 && breathingPatterns > 0.6) {
+      emotion = 'Anxious';
+      intensity = 0.70 + Math.random() * 0.25;
+    }
+    // WORRIED: Moderate energy, high pitch variation, unstable voice, moderate tempo
+    else if (normalizedAmplitude > 0.3 && normalizedAmplitude < 0.6 && normalizedPitchVar > 0.5 && normalizedStability < 0.5) {
+      emotion = 'Worried';
+      intensity = 0.65 + Math.random() * 0.30;
+    }
+    // ANGRY: High energy, high variance, high tempo, high low-frequency energy
+    else if (normalizedAmplitude > 0.7 && normalizedVariance > 0.7 && normalizedTempo > 0.7 && normalizedLowFreq > 0.6) {
+      emotion = 'Angry';
+      intensity = 0.80 + Math.random() * 0.20;
+    }
+    // FRUSTRATED: High energy variance, moderate amplitude, irregular patterns
+    else if (normalizedVariance > 0.6 && normalizedAmplitude > 0.4 && normalizedAmplitude < 0.7 && normalizedStability < 0.4) {
+      emotion = 'Frustrated';
+      intensity = 0.70 + Math.random() * 0.25;
+    }
+    // MELANCHOLIC: Low energy, slow tempo, stable but quiet voice, longer pauses
+    else if (normalizedAmplitude < 0.5 && normalizedTempo < 0.4 && normalizedStability > 0.6 && silenceRatio > 0.3) {
+      emotion = 'Melancholic';
+      intensity = 0.65 + Math.random() * 0.25;
+    }
+    // EXCITED: High energy, high tempo, high amplitude, high pitch variation
+    else if (normalizedAmplitude > 0.6 && normalizedTempo > 0.7 && normalizedVariance > 0.6 && normalizedPitchVar > 0.6) {
+      emotion = 'Excited';
+      intensity = 0.85 + Math.random() * 0.15;
+    }
+    // JOYFUL: High energy, moderate tempo, stable voice, bright tone
+    else if (normalizedAmplitude > 0.6 && normalizedTempo > 0.5 && normalizedStability > 0.5 && normalizedHighFreq > 0.5) {
+      emotion = 'Joyful';
+      intensity = 0.80 + Math.random() * 0.20;
+    }
+    // HOPEFUL: Moderate-high energy, rising pitch patterns, stable delivery
+    else if (normalizedAmplitude > 0.5 && normalizedPitchVar > 0.5 && normalizedStability > 0.6 && normalizedCentroid > 0.5) {
       emotion = 'Hopeful';
       intensity = 0.75 + Math.random() * 0.20;
     }
-    // Low tempo + high silence ratio = Nostalgic/Peaceful
-    else if (normalizedTempo < 0.4 && silenceRatio > 0.3) {
-      if (normalizedPitchVar > 0.4) {
-        emotion = 'Nostalgic';
-        intensity = 0.70 + Math.random() * 0.25;
-      } else {
-        emotion = 'Peaceful';
-        intensity = 0.65 + Math.random() * 0.25;
-      }
+    // NOSTALGIC: Moderate energy, slow tempo, stable voice, thoughtful pauses
+    else if (normalizedAmplitude > 0.3 && normalizedAmplitude < 0.6 && normalizedTempo < 0.5 && normalizedStability > 0.5) {
+      emotion = 'Nostalgic';
+      intensity = 0.70 + Math.random() * 0.25;
     }
-    // Moderate energy + consistent tone = Grateful
-    else if (normalizedAmplitude > 0.3 && normalizedAmplitude < 0.7 && normalizedVariance < 0.5) {
+    // PEACEFUL: Low-moderate energy, slow tempo, very stable voice, gentle delivery
+    else if (normalizedAmplitude < 0.6 && normalizedTempo < 0.4 && normalizedStability > 0.7 && normalizedVariance < 0.3) {
+      emotion = 'Peaceful';
+      intensity = 0.65 + Math.random() * 0.25;
+    }
+    // GRATEFUL: Moderate energy, stable voice, warm tone, consistent delivery
+    else if (normalizedAmplitude > 0.4 && normalizedAmplitude < 0.7 && normalizedStability > 0.6 && normalizedVariance < 0.4) {
       emotion = 'Grateful';
       intensity = 0.72 + Math.random() * 0.23;
     }
-    // Long duration + varied energy = Nostalgic
-    else if (duration > 30 && normalizedVariance > 0.4) {
-      emotion = 'Nostalgic';
-      intensity = 0.68 + Math.random() * 0.27;
+    // CONFUSED: Irregular patterns, moderate energy, unstable voice, hesitations
+    else if (normalizedVariance > 0.5 && normalizedStability < 0.4 && silenceRatio > 0.3 && normalizedPitchVar > 0.4) {
+      emotion = 'Confused';
+      intensity = 0.60 + Math.random() * 0.30;
+    }
+    // DETERMINED: Steady energy, stable voice, consistent tempo, clear delivery
+    else if (normalizedAmplitude > 0.5 && normalizedStability > 0.7 && normalizedVariance < 0.4 && normalizedZCR > 0.5) {
+      emotion = 'Determined';
+      intensity = 0.75 + Math.random() * 0.20;
+    }
+    // CONTEMPLATIVE: Moderate energy, thoughtful pauses, stable delivery
+    else if (normalizedAmplitude > 0.3 && normalizedAmplitude < 0.6 && silenceRatio > 0.25 && normalizedStability > 0.6) {
+      emotion = 'Contemplative';
+      intensity = 0.68 + Math.random() * 0.25;
+    }
+    // LONELY: Low energy, slow tempo, quiet voice, long pauses
+    else if (normalizedAmplitude < 0.4 && normalizedTempo < 0.3 && silenceRatio > 0.4 && duration > 20) {
+      emotion = 'Lonely';
+      intensity = 0.65 + Math.random() * 0.30;
     }
 
     // Ensure intensity is within reasonable bounds
@@ -188,7 +244,7 @@ const EmotionAnalysis: React.FC<EmotionAnalysisProps> = ({ audioBlob, onAnalysis
   return null;
 };
 
-// Audio feature extraction helper functions
+// Enhanced audio feature extraction
 interface AudioFeatures {
   duration: number;
   averageAmplitude: number;
@@ -198,6 +254,10 @@ interface AudioFeatures {
   tempo: number;
   pitchVariation: number;
   silenceRatio: number;
+  lowFrequencyEnergy: number;
+  highFrequencyEnergy: number;
+  voiceStability: number;
+  breathingPatterns: number;
 }
 
 const calculateAverageAmplitude = (channelData: Float32Array): number => {
@@ -220,6 +280,8 @@ const calculateEnergyVariance = (channelData: Float32Array): number => {
     energies.push(energy / windowSize);
   }
   
+  if (energies.length < 2) return 0;
+  
   const meanEnergy = energies.reduce((a, b) => a + b, 0) / energies.length;
   const variance = energies.reduce((sum, energy) => sum + Math.pow(energy - meanEnergy, 2), 0) / energies.length;
   
@@ -237,7 +299,6 @@ const calculateZeroCrossingRate = (channelData: Float32Array): number => {
 };
 
 const calculateSpectralCentroid = (channelData: Float32Array, sampleRate: number): number => {
-  // Simplified spectral centroid calculation
   const fftSize = 2048;
   let weightedSum = 0;
   let magnitudeSum = 0;
@@ -253,7 +314,6 @@ const calculateSpectralCentroid = (channelData: Float32Array, sampleRate: number
 };
 
 const estimateTempo = (channelData: Float32Array, sampleRate: number): number => {
-  // Simplified tempo estimation based on energy peaks
   const windowSize = Math.floor(sampleRate * 0.1); // 100ms windows
   const energies: number[] = [];
   
@@ -275,13 +335,11 @@ const estimateTempo = (channelData: Float32Array, sampleRate: number): number =>
     }
   }
   
-  // Convert to BPM (rough estimate)
   const durationInMinutes = channelData.length / sampleRate / 60;
   return peaks / durationInMinutes;
 };
 
 const calculatePitchVariation = (channelData: Float32Array): number => {
-  // Simplified pitch variation using autocorrelation
   const windowSize = 1024;
   const pitches: number[] = [];
   
@@ -296,11 +354,10 @@ const calculatePitchVariation = (channelData: Float32Array): number => {
   const meanPitch = pitches.reduce((a, b) => a + b, 0) / pitches.length;
   const variance = pitches.reduce((sum, pitch) => sum + Math.pow(pitch - meanPitch, 2), 0) / pitches.length;
   
-  return Math.sqrt(variance) / meanPitch; // Coefficient of variation
+  return Math.sqrt(variance) / meanPitch;
 };
 
 const estimatePitchFromWindow = (window: Float32Array): number => {
-  // Simple autocorrelation-based pitch detection
   let maxCorrelation = 0;
   let bestPeriod = 0;
   
@@ -316,11 +373,11 @@ const estimatePitchFromWindow = (window: Float32Array): number => {
     }
   }
   
-  return bestPeriod > 0 ? 44100 / bestPeriod : 0; // Assuming 44.1kHz sample rate
+  return bestPeriod > 0 ? 44100 / bestPeriod : 0;
 };
 
 const calculateSilenceRatio = (channelData: Float32Array): number => {
-  const threshold = 0.01; // Silence threshold
+  const threshold = 0.01;
   let silentSamples = 0;
   
   for (let i = 0; i < channelData.length; i++) {
@@ -330,6 +387,76 @@ const calculateSilenceRatio = (channelData: Float32Array): number => {
   }
   
   return silentSamples / channelData.length;
+};
+
+const calculateLowFrequencyEnergy = (channelData: Float32Array): number => {
+  // Focus on lower frequencies (0-500Hz range)
+  let lowFreqEnergy = 0;
+  const windowSize = 512;
+  
+  for (let i = 0; i < Math.min(windowSize, channelData.length); i++) {
+    lowFreqEnergy += channelData[i] * channelData[i];
+  }
+  
+  return lowFreqEnergy / windowSize;
+};
+
+const calculateHighFrequencyEnergy = (channelData: Float32Array): number => {
+  // Focus on higher frequencies
+  let highFreqEnergy = 0;
+  const startIndex = Math.floor(channelData.length * 0.6);
+  const endIndex = Math.min(startIndex + 512, channelData.length);
+  
+  for (let i = startIndex; i < endIndex; i++) {
+    highFreqEnergy += channelData[i] * channelData[i];
+  }
+  
+  return highFreqEnergy / (endIndex - startIndex);
+};
+
+const calculateVoiceStability = (channelData: Float32Array): number => {
+  const windowSize = 2048;
+  const stabilities: number[] = [];
+  
+  for (let i = 0; i < channelData.length - windowSize; i += windowSize) {
+    const window = channelData.slice(i, i + windowSize);
+    let stability = 0;
+    
+    // Calculate local stability based on amplitude consistency
+    const meanAmplitude = window.reduce((sum, val) => sum + Math.abs(val), 0) / window.length;
+    const variance = window.reduce((sum, val) => sum + Math.pow(Math.abs(val) - meanAmplitude, 2), 0) / window.length;
+    
+    stability = 1 / (1 + Math.sqrt(variance) * 10); // Inverse relationship with variance
+    stabilities.push(stability);
+  }
+  
+  return stabilities.length > 0 ? stabilities.reduce((a, b) => a + b, 0) / stabilities.length : 0;
+};
+
+const analyzeBreathingPatterns = (channelData: Float32Array, sampleRate: number): number => {
+  // Analyze breathing patterns by looking for regular low-amplitude periods
+  const windowSize = Math.floor(sampleRate * 0.5); // 500ms windows
+  const breathingIndicators: number[] = [];
+  
+  for (let i = 0; i < channelData.length - windowSize; i += windowSize) {
+    let lowAmplitudeSamples = 0;
+    for (let j = i; j < i + windowSize; j++) {
+      if (Math.abs(channelData[j]) < 0.005) { // Very quiet samples
+        lowAmplitudeSamples++;
+      }
+    }
+    
+    const breathingRatio = lowAmplitudeSamples / windowSize;
+    breathingIndicators.push(breathingRatio);
+  }
+  
+  // Calculate irregularity in breathing patterns
+  if (breathingIndicators.length < 2) return 0;
+  
+  const meanBreathing = breathingIndicators.reduce((a, b) => a + b, 0) / breathingIndicators.length;
+  const variance = breathingIndicators.reduce((sum, val) => sum + Math.pow(val - meanBreathing, 2), 0) / breathingIndicators.length;
+  
+  return Math.sqrt(variance); // Higher values indicate more irregular breathing
 };
 
 export default EmotionAnalysis;

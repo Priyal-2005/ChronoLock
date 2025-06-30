@@ -34,12 +34,30 @@ const DashboardPage: React.FC = () => {
 
   const getEmotionColor = (tone: string) => {
     const colors: Record<string, string> = {
+      // Positive emotions
       'Hopeful': 'from-aurora-500/60 to-aurora-600/60',
       'Joyful': 'from-gold-400/60 to-gold-500/60',
-      'Nostalgic': 'from-nebula-500/60 to-nebula-600/60',
-      'Peaceful': 'from-aurora-400/60 to-aurora-500/60',
       'Excited': 'from-cosmos-500/60 to-cosmos-600/60',
-      'Grateful': 'from-gold-500/60 to-gold-600/60'
+      'Grateful': 'from-gold-500/60 to-gold-600/60',
+      'Peaceful': 'from-aurora-400/60 to-aurora-500/60',
+      'Determined': 'from-nebula-500/60 to-nebula-600/60',
+      
+      // Contemplative emotions
+      'Nostalgic': 'from-nebula-500/60 to-nebula-600/60',
+      'Contemplative': 'from-starlight-500/60 to-starlight-600/60',
+      'Melancholic': 'from-void-500/60 to-void-600/60',
+      
+      // Challenging emotions
+      'Sad': 'from-midnight-500/60 to-midnight-600/60',
+      'Anxious': 'from-cosmos-600/60 to-cosmos-700/60',
+      'Worried': 'from-nebula-600/60 to-nebula-700/60',
+      'Angry': 'from-red-500/60 to-red-600/60',
+      'Frustrated': 'from-orange-500/60 to-orange-600/60',
+      'Confused': 'from-purple-500/60 to-purple-600/60',
+      'Lonely': 'from-blue-500/60 to-blue-600/60',
+      
+      // Neutral
+      'Neutral': 'from-starlight-400/60 to-starlight-500/60'
     };
     return colors[tone] || 'from-starlight-400/60 to-starlight-500/60';
   };
@@ -52,12 +70,30 @@ const DashboardPage: React.FC = () => {
 
   const getEmotionWhisper = (tone: string) => {
     const whispers: Record<string, string> = {
+      // Positive emotions
       'Hopeful': 'Dreams painted in tomorrow\'s light',
       'Joyful': 'Laughter echoing through time',
-      'Nostalgic': 'Memories wrapped in golden mist',
-      'Peaceful': 'Serenity flowing like starlight',
       'Excited': 'Energy dancing with the cosmos',
-      'Grateful': 'Thankfulness blooming like dawn'
+      'Grateful': 'Thankfulness blooming like dawn',
+      'Peaceful': 'Serenity flowing like starlight',
+      'Determined': 'Will forged in stellar fire',
+      
+      // Contemplative emotions
+      'Nostalgic': 'Memories wrapped in golden mist',
+      'Contemplative': 'Thoughts drifting through cosmic silence',
+      'Melancholic': 'Gentle sorrow like autumn rain',
+      
+      // Challenging emotions
+      'Sad': 'Tears that water tomorrow\'s growth',
+      'Anxious': 'Restless energy seeking peace',
+      'Worried': 'Care wrapped in cosmic concern',
+      'Angry': 'Fire that burns for justice',
+      'Frustrated': 'Passion seeking its true path',
+      'Confused': 'Questions dancing in starlight',
+      'Lonely': 'Solitude seeking connection',
+      
+      // Neutral
+      'Neutral': 'Calm presence in the cosmic flow'
     };
     return whispers[tone] || 'Emotions flowing like stardust';
   };
