@@ -5,6 +5,7 @@ interface AudioContextType {
   audioBlob: Blob | null;
   audioUrl: string | null;
   waveformData: number[];
+  duration: number;
   startRecording: () => Promise<void>;
   stopRecording: () => void;
   clearRecording: () => void;
@@ -25,60 +26,100 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [waveformData, setWaveformData] = useState<number[]>([]);
+  const [duration, setDuration] = useState(0);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const startTimeRef = useRef<number>(0);
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100
+        }
+      });
+      
+      streamRef.current = stream;
       
       // Set up audio analysis
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       const source = audioContextRef.current.createMediaStreamSource(stream);
       analyserRef.current = audioContextRef.current.createAnalyser();
       analyserRef.current.fftSize = 256;
+      analyserRef.current.smoothingTimeConstant = 0.8;
       source.connect(analyserRef.current);
       
       // Start waveform visualization
       const updateWaveform = () => {
-        if (!analyserRef.current) return;
+        if (!analyserRef.current || !isRecording) return;
         
         const bufferLength = analyserRef.current.frequencyBinCount;
         const dataArray = new Uint8Array(bufferLength);
         analyserRef.current.getByteFrequencyData(dataArray);
         
-        const normalizedData = Array.from(dataArray).map(value => value / 255);
-        setWaveformData(normalizedData.slice(0, 32)); // Use first 32 frequency bins
+        // Process the frequency data to create a more responsive waveform
+        const normalizedData = Array.from(dataArray)
+          .slice(0, 40) // Use first 40 frequency bins
+          .map(value => Math.min(value / 255, 1));
+        
+        setWaveformData(normalizedData);
         
         if (isRecording) {
           animationFrameRef.current = requestAnimationFrame(updateWaveform);
         }
       };
       
-      // Set up media recorder
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      // Set up media recorder with better settings
+      const options = {
+        mimeType: 'audio/webm;codecs=opus',
+        audioBitsPerSecond: 128000
+      };
+      
+      // Fallback for browsers that don't support webm
+      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+        options.mimeType = 'audio/mp4';
+      }
+      
+      mediaRecorderRef.current = new MediaRecorder(stream, options);
       const chunks: Blob[] = [];
       
       mediaRecorderRef.current.ondataavailable = (event) => {
-        chunks.push(event.data);
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
       };
       
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(chunks, { type: 'audio/wav' });
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
-        stream.getTracks().forEach(track => track.stop());
+        
+        // Calculate duration
+        const endTime = Date.now();
+        const recordingDuration = Math.floor((endTime - startTimeRef.current) / 1000);
+        setDuration(recordingDuration);
+        
+        // Clean up stream
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
       };
       
-      mediaRecorderRef.current.start();
+      startTimeRef.current = Date.now();
+      mediaRecorderRef.current.start(100); // Collect data every 100ms
       setIsRecording(true);
       updateWaveform();
       
     } catch (error) {
       console.error('Failed to start recording:', error);
+      alert('Could not access microphone. Please check your permissions.');
     }
   };
 
@@ -99,6 +140,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const clearRecording = () => {
     setAudioBlob(null);
+    setDuration(0);
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl);
       setAudioUrl(null);
@@ -113,6 +155,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         audioBlob,
         audioUrl,
         waveformData,
+        duration,
         startRecording,
         stopRecording,
         clearRecording

@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { Mic, Square, Play, Trash2, Calendar, Lock, Upload, Star, Moon } from 'lucide-react';
 import { useWallet } from '../contexts/WalletContext';
 import { useAudio } from '../contexts/AudioContext';
+import { useMemory } from '../contexts/MemoryContext';
 import WaveformVisualizer from '../components/WaveformVisualizer';
 import DatePicker from '../components/DatePicker';
 import EmotionAnalysis from '../components/EmotionAnalysis';
 
 const RecordPage: React.FC = () => {
   const { isConnected } = useWallet();
-  const { isRecording, audioBlob, audioUrl, startRecording, stopRecording, clearRecording } = useAudio();
+  const { isRecording, audioBlob, audioUrl, duration, startRecording, stopRecording, clearRecording } = useAudio();
+  const { addMemory } = useMemory();
+  const navigate = useNavigate();
   
   const [unlockDate, setUnlockDate] = useState<Date>(new Date(Date.now() + 24 * 60 * 60 * 1000)); // Tomorrow
   const [title, setTitle] = useState('');
@@ -22,12 +25,25 @@ const RecordPage: React.FC = () => {
   }
 
   const handleUpload = async () => {
-    if (!audioBlob || !title.trim()) return;
+    if (!audioBlob || !title.trim() || !emotion) return;
     
     setIsUploading(true);
     try {
-      // Here we would integrate with the backend API
-      // For now, we'll simulate the upload process
+      // Create a persistent URL for the audio blob
+      const persistentAudioUrl = URL.createObjectURL(audioBlob);
+      
+      // Add memory to local storage
+      const memoryId = addMemory({
+        title: title.trim(),
+        note: message.trim() || undefined,
+        unlockDate,
+        emotion,
+        duration,
+        audioUrl: persistentAudioUrl,
+        audioBlob
+      });
+
+      // Simulate upload delay for better UX
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Reset form
@@ -36,7 +52,14 @@ const RecordPage: React.FC = () => {
       clearRecording();
       setEmotion(null);
       
-      alert('Your whisper has been locked in time\'s embrace!');
+      // Navigate to dashboard with success message
+      navigate('/dashboard', { 
+        state: { 
+          message: 'Your whisper has been locked in time\'s embrace!',
+          newMemoryId: memoryId
+        }
+      });
+      
     } catch (error) {
       console.error('Upload failed:', error);
       alert('The cosmos rejected your offering. Please try again.');
@@ -55,6 +78,12 @@ const RecordPage: React.FC = () => {
       'Grateful': 'Thankfulness blooming like dawn'
     };
     return whispers[tone] || 'Your emotion flows like stardust';
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -113,7 +142,12 @@ const RecordPage: React.FC = () => {
 
             {audioBlob && (
               <div className="flex flex-col items-center space-y-4">
-                <audio controls src={audioUrl || undefined} className="rounded-2xl glass-soft p-2" />
+                <div className="glass-soft p-4 rounded-2xl">
+                  <audio controls src={audioUrl || undefined} className="rounded-xl" />
+                  <p className="text-center text-starlight-300 mt-2 font-serif text-sm">
+                    Duration: {formatDuration(duration)}
+                  </p>
+                </div>
                 <button
                   onClick={clearRecording}
                   className="flex items-center space-x-2 text-starlight-400 hover:text-starlight-200 transition-colors font-serif"
@@ -126,7 +160,9 @@ const RecordPage: React.FC = () => {
           </div>
 
           {/* Emotion Analysis */}
-          {audioBlob && <EmotionAnalysis audioBlob={audioBlob} onAnalysisComplete={setEmotion} />}
+          {audioBlob && !emotion && (
+            <EmotionAnalysis audioBlob={audioBlob} onAnalysisComplete={setEmotion} />
+          )}
         </div>
 
         {/* Configuration Section */}
@@ -140,7 +176,7 @@ const RecordPage: React.FC = () => {
             {/* Title */}
             <div>
               <label className="block text-lg font-serif text-starlight-200 mb-3">
-                Memory Title
+                Memory Title *
               </label>
               <input
                 type="text"
@@ -148,6 +184,7 @@ const RecordPage: React.FC = () => {
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g., Birthday wishes for my future self..."
                 className="w-full px-6 py-4 rounded-2xl bg-white/[0.04] border border-white/[0.12] text-starlight-100 placeholder-starlight-500 focus:ring-2 focus:ring-cosmos-500/50 focus:border-transparent transition-all font-serif"
+                required
               />
               <p className="text-whisper mt-2">Give your whisper a name to remember</p>
             </div>
@@ -201,7 +238,7 @@ const RecordPage: React.FC = () => {
             {/* Upload Button */}
             <button
               onClick={handleUpload}
-              disabled={!audioBlob || !title.trim() || isUploading}
+              disabled={!audioBlob || !title.trim() || !emotion || isUploading}
               className="w-full button-primary px-8 py-6 font-serif font-medium text-lg transition-all duration-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none group"
             >
               {isUploading ? (
@@ -222,6 +259,22 @@ const RecordPage: React.FC = () => {
                 </div>
               )}
             </button>
+
+            {/* Requirements */}
+            <div className="text-sm text-starlight-400 space-y-1">
+              <p className="flex items-center">
+                <span className={`w-2 h-2 rounded-full mr-2 ${audioBlob ? 'bg-aurora-400' : 'bg-starlight-600'}`} />
+                Voice recording
+              </p>
+              <p className="flex items-center">
+                <span className={`w-2 h-2 rounded-full mr-2 ${title.trim() ? 'bg-aurora-400' : 'bg-starlight-600'}`} />
+                Memory title
+              </p>
+              <p className="flex items-center">
+                <span className={`w-2 h-2 rounded-full mr-2 ${emotion ? 'bg-aurora-400' : 'bg-starlight-600'}`} />
+                Emotion analysis
+              </p>
+            </div>
           </div>
         </div>
       </div>

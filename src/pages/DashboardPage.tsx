@@ -1,74 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { Navigate, Link } from 'react-router-dom';
+import { Navigate, Link, useLocation } from 'react-router-dom';
 import { Clock, Lock, Unlock, Play, Calendar, Heart, Star, Moon } from 'lucide-react';
 import { formatDistanceToNow, isAfter } from 'date-fns';
 import { useWallet } from '../contexts/WalletContext';
-
-interface VoiceMemory {
-  id: string;
-  title: string;
-  note?: string;
-  unlockDate: Date;
-  createdDate: Date;
-  emotion: {
-    tone: string;
-    intensity: number;
-  };
-  duration: number; // in seconds
-  isLocked: boolean;
-}
+import { useMemory } from '../contexts/MemoryContext';
 
 const DashboardPage: React.FC = () => {
   const { isConnected } = useWallet();
-  const [memories, setMemories] = useState<VoiceMemory[]>([]);
+  const { memories } = useMemory();
+  const location = useLocation();
   const [filter, setFilter] = useState<'all' | 'locked' | 'unlocked'>('all');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   if (!isConnected) {
     return <Navigate to="/" replace />;
   }
 
-  // Mock data - replace with actual API calls
+  // Show success message if navigated from record page
   useEffect(() => {
-    const mockMemories: VoiceMemory[] = [
-      {
-        id: '1',
-        title: 'Birthday Wishes to My Future Self',
-        note: 'Recorded on my 25th birthday, a letter to who I\'ll become at 30',
-        unlockDate: new Date('2025-12-25'),
-        createdDate: new Date('2024-12-25'),
-        emotion: { tone: 'Hopeful', intensity: 0.85 },
-        duration: 120,
-        isLocked: true
-      },
-      {
-        id: '2',
-        title: 'Wedding Day Promises',
-        note: 'For our fifth anniversary, when love has deepened like wine',
-        unlockDate: new Date('2024-06-15'),
-        createdDate: new Date('2023-06-15'),
-        emotion: { tone: 'Joyful', intensity: 0.92 },
-        duration: 180,
-        isLocked: false
-      },
-      {
-        id: '3',
-        title: 'New Year Contemplations',
-        unlockDate: new Date('2025-01-01'),
-        createdDate: new Date('2024-01-01'),
-        emotion: { tone: 'Nostalgic', intensity: 0.76 },
-        duration: 95,
-        isLocked: true
-      }
-    ];
-
-    // Update lock status based on current date
-    const updatedMemories = mockMemories.map(memory => ({
-      ...memory,
-      isLocked: !isAfter(new Date(), memory.unlockDate)
-    }));
-
-    setMemories(updatedMemories);
-  }, []);
+    if (location.state?.message) {
+      setSuccessMessage(location.state.message);
+      // Clear the message after 5 seconds
+      const timer = setTimeout(() => setSuccessMessage(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [location.state]);
 
   const filteredMemories = memories.filter(memory => {
     if (filter === 'locked') return memory.isLocked;
@@ -108,6 +64,18 @@ const DashboardPage: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      {/* Success Message */}
+      {successMessage && (
+        <div className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 animate-slide-up">
+          <div className="glass-soft p-6 border border-aurora-500/30 rounded-2xl">
+            <div className="flex items-center space-x-3">
+              <Star className="h-6 w-6 text-aurora-400" />
+              <p className="text-starlight-200 font-serif">{successMessage}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="text-center mb-20">
         <h1 className="text-5xl md:text-6xl font-display font-light text-starlight-100 mb-6 text-glow-soft">
