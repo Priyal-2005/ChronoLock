@@ -16,6 +16,22 @@ export class ChronoLockStorage {
   }
 
   /**
+   * Helper function to convert Uint8Array to binary string in chunks
+   * to avoid call stack overflow for large arrays
+   */
+  private uint8ArrayToBinaryString(uint8Array: Uint8Array): string {
+    const chunkSize = 8192; // Process in 8KB chunks
+    let binaryString = '';
+    
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.slice(i, i + chunkSize);
+      binaryString += String.fromCharCode(...chunk);
+    }
+    
+    return binaryString;
+  }
+
+  /**
    * Store a voice memory with full encryption and blockchain integration
    */
   async storeVoiceMemory(
@@ -36,9 +52,9 @@ export class ChronoLockStorage {
       // 2. Encrypt the audio
       const { encryptedData, iv } = await EncryptionManager.encryptAudio(audioBlob, encryptionKey);
 
-      // 3. Convert encrypted data and IV to base64 for transmission
-      const encryptedAudioBase64 = btoa(String.fromCharCode(...encryptedData));
-      const encryptionIvBase64 = btoa(String.fromCharCode(...iv));
+      // 3. Convert encrypted data and IV to base64 for transmission using chunked conversion
+      const encryptedAudioBase64 = btoa(this.uint8ArrayToBinaryString(encryptedData));
+      const encryptionIvBase64 = btoa(this.uint8ArrayToBinaryString(iv));
 
       // 4. Send to Netlify function for IPFS upload and contract creation
       const response = await fetch('/.netlify/functions/upload-memory', {
@@ -78,7 +94,7 @@ export class ChronoLockStorage {
         emotion: metadata.emotion,
         ipfsCid: result.ipfsCid,
         contractId: result.contractId,
-        encryptionKey: btoa(String.fromCharCode(...keyBytes)), // Store as base64
+        encryptionKey: btoa(this.uint8ArrayToBinaryString(keyBytes)), // Store as base64
         encryptionIv: encryptionIvBase64,
         userAddress: metadata.userAddress
       });
@@ -87,7 +103,7 @@ export class ChronoLockStorage {
         memoryId: result.memoryId,
         ipfsCid: result.ipfsCid,
         contractId: result.contractId,
-        encryptionKey: btoa(String.fromCharCode(...keyBytes))
+        encryptionKey: btoa(this.uint8ArrayToBinaryString(keyBytes))
       };
 
     } catch (error) {
