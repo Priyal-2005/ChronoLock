@@ -47,7 +47,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setAccounts(newAccounts);
     } catch (error) {
       // Check if the error is due to user closing the modal
-      if (error instanceof Error && error.message === 'Connect is cancelled by user') {
+      if (error instanceof Error && error.message === 'Connect modal is closed by user') {
         // This is a user-initiated cancellation, not an actual error
         console.log('Wallet connection cancelled by user');
         return;
