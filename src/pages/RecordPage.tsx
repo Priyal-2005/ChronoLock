@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Mic, Square, Play, Trash2, Calendar, Lock, Upload, Star, Moon } from 'lucide-react';
+import { Mic, Square, Play, Trash2, Calendar, Lock, Upload, Star, Moon, Loader } from 'lucide-react';
 import { useWallet } from '../contexts/WalletContext';
 import { useAudio } from '../contexts/AudioContext';
 import { useMemory } from '../contexts/MemoryContext';
@@ -11,7 +11,7 @@ import EmotionAnalysis from '../components/EmotionAnalysis';
 const RecordPage: React.FC = () => {
   const { isConnected } = useWallet();
   const { isRecording, audioBlob, audioUrl, duration, startRecording, stopRecording, clearRecording } = useAudio();
-  const { addMemory } = useMemory();
+  const { addMemory, isLoading: isStorageLoading } = useMemory();
   const navigate = useNavigate();
   
   const [unlockDate, setUnlockDate] = useState<Date>(new Date(Date.now() + 24 * 60 * 60 * 1000)); // Tomorrow
@@ -29,23 +29,16 @@ const RecordPage: React.FC = () => {
     
     setIsUploading(true);
     try {
-      // Create a persistent URL for the audio blob
-      const persistentAudioUrl = URL.createObjectURL(audioBlob);
-      
-      // Add memory to local storage
-      const memoryId = addMemory({
+      // Store using AlgoNode IPFS + Algorand smart contracts
+      const memoryId = await addMemory({
         title: title.trim(),
         note: message.trim() || undefined,
         unlockDate,
         emotion,
         duration,
-        audioUrl: persistentAudioUrl,
         audioBlob
       });
 
-      // Simulate upload delay for better UX
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
       // Reset form
       setTitle('');
       setMessage('');
@@ -55,35 +48,53 @@ const RecordPage: React.FC = () => {
       // Navigate to dashboard with success message
       navigate('/dashboard', { 
         state: { 
-          message: 'Your whisper has been locked in time\'s embrace!',
+          message: 'Your whisper has been locked in time\'s embrace and stored on IPFS!',
           newMemoryId: memoryId
         }
       });
       
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('The cosmos rejected your offering. Please try again.');
+      alert(`Failed to store your memory: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsUploading(false);
     }
-  };
-
-  const getEmotionWhisper = (tone: string) => {
-    const whispers: Record<string, string> = {
-      'Hopeful': 'Your voice carries tomorrow\'s light',
-      'Joyful': 'Laughter echoes through the stars',
-      'Nostalgic': 'Memory wrapped in golden mist',
-      'Peaceful': 'Serenity flows like starlight',
-      'Excited': 'Energy dancing with cosmos',
-      'Grateful': 'Thankfulness blooming like dawn'
-    };
-    return whispers[tone] || 'Your emotion flows like stardust';
   };
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getEmotionWhisper = (tone: string) => {
+    const whispers: Record<string, string> = {
+      // Positive emotions
+      'Hopeful': 'Your voice carries tomorrow\'s light',
+      'Joyful': 'Laughter echoes through the stars',
+      'Excited': 'Energy dancing with cosmos',
+      'Grateful': 'Thankfulness blooming like dawn',
+      'Peaceful': 'Serenity flows like starlight',
+      'Determined': 'Will forged in stellar fire',
+      
+      // Contemplative emotions
+      'Nostalgic': 'Memory wrapped in golden mist',
+      'Contemplative': 'Thoughts drifting through cosmic silence',
+      'Melancholic': 'Gentle sorrow like autumn rain',
+      
+      // Challenging emotions
+      'Sad': 'Tears that water tomorrow\'s growth',
+      'Anxious': 'Restless energy seeking peace',
+      'Worried': 'Care wrapped in cosmic concern',
+      'Angry': 'Fire that burns for justice',
+      'Frustrated': 'Passion seeking its true path',
+      'Confused': 'Questions dancing in starlight',
+      'Lonely': 'Solitude seeking connection',
+      
+      // Neutral
+      'Neutral': 'Calm presence in the cosmic flow'
+    };
+    return whispers[tone] || 'Your emotion flows like stardust';
   };
 
   return (
@@ -94,7 +105,7 @@ const RecordPage: React.FC = () => {
         </h1>
         <p className="text-xl text-starlight-400 max-w-3xl mx-auto font-serif italic poetry-spacing">
           Record a message for your future self or beloved souls. 
-          Choose the sacred moment when time itself will release your words back to the world.
+          Your voice will be encrypted and stored on IPFS, locked by Algorand smart contracts until the perfect moment.
         </p>
       </div>
 
@@ -238,13 +249,13 @@ const RecordPage: React.FC = () => {
             {/* Upload Button */}
             <button
               onClick={handleUpload}
-              disabled={!audioBlob || !title.trim() || !emotion || isUploading}
+              disabled={!audioBlob || !title.trim() || !emotion || isUploading || isStorageLoading}
               className="w-full button-primary px-8 py-6 font-serif font-medium text-lg transition-all duration-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none group"
             >
-              {isUploading ? (
+              {isUploading || isStorageLoading ? (
                 <div className="flex items-center justify-center space-x-3">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                  <span>Weaving into Time...</span>
+                  <Loader className="animate-spin h-6 w-6" />
+                  <span>Storing on IPFS & Algorand...</span>
                 </div>
               ) : (
                 <div className="flex items-center justify-center space-x-3">
@@ -253,9 +264,9 @@ const RecordPage: React.FC = () => {
                   <Moon className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 </div>
               )}
-              {!isUploading && (
+              {!isUploading && !isStorageLoading && (
                 <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <span className="text-whisper text-sm">Send your whisper to tomorrow</span>
+                  <span className="text-whisper text-sm">Store on IPFS via AlgoNode</span>
                 </div>
               )}
             </button>
@@ -274,6 +285,17 @@ const RecordPage: React.FC = () => {
                 <span className={`w-2 h-2 rounded-full mr-2 ${emotion ? 'bg-aurora-400' : 'bg-starlight-600'}`} />
                 Emotion analysis
               </p>
+            </div>
+
+            {/* Storage Info */}
+            <div className="glass-soft p-4 border border-aurora-500/20">
+              <h4 className="text-sm font-serif text-starlight-200 mb-2">Storage Details</h4>
+              <div className="text-xs text-starlight-400 space-y-1">
+                <p>• Audio encrypted with AES-256-GCM</p>
+                <p>• Stored on IPFS via AlgoNode</p>
+                <p>• Time-locked by Algorand smart contract</p>
+                <p>• Decentralized and permanent</p>
+              </div>
             </div>
           </div>
         </div>

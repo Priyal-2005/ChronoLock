@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { ChronoLockStorage } from '../utils/storage';
+import { useWallet } from './WalletContext';
 
 export interface VoiceMemory {
   id: string;
@@ -14,14 +16,18 @@ export interface VoiceMemory {
   isLocked: boolean;
   audioUrl?: string;
   audioBlob?: Blob;
+  ipfsCid?: string;
+  contractId?: number;
 }
 
 interface MemoryContextType {
   memories: VoiceMemory[];
-  addMemory: (memory: Omit<VoiceMemory, 'id' | 'createdDate' | 'isLocked'>) => void;
+  addMemory: (memory: Omit<VoiceMemory, 'id' | 'createdDate' | 'isLocked'>) => Promise<string>;
   getMemory: (id: string) => VoiceMemory | undefined;
   updateMemory: (id: string, updates: Partial<VoiceMemory>) => void;
   deleteMemory: (id: string) => void;
+  refreshMemories: () => Promise<void>;
+  isLoading: boolean;
 }
 
 const MemoryContext = createContext<MemoryContextType | undefined>(undefined);
@@ -34,54 +40,82 @@ export const useMemory = () => {
   return context;
 };
 
-const STORAGE_KEY = 'chronolock_memories';
-
 export const MemoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [memories, setMemories] = useState<VoiceMemory[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const { accounts, isConnected } = useWallet();
+  const storage = new ChronoLockStorage();
 
-  // Load memories from localStorage on mount
+  // Load memories when wallet connects
   useEffect(() => {
-    const loadMemories = () => {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const parsedMemories = JSON.parse(stored);
-          // Convert date strings back to Date objects and update lock status
-          const memoriesWithDates = parsedMemories.map((memory: any) => ({
-            ...memory,
-            unlockDate: new Date(memory.unlockDate),
-            createdDate: new Date(memory.createdDate),
-            isLocked: new Date() < new Date(memory.unlockDate)
-          }));
-          setMemories(memoriesWithDates);
-        }
-      } catch (error) {
-        console.error('Failed to load memories from storage:', error);
-      }
-    };
-
-    loadMemories();
-  }, []);
-
-  // Save memories to localStorage whenever memories change
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(memories));
-    } catch (error) {
-      console.error('Failed to save memories to storage:', error);
+    if (isConnected && accounts.length > 0) {
+      refreshMemories();
+    } else {
+      setMemories([]);
     }
-  }, [memories]);
+  }, [isConnected, accounts]);
 
-  const addMemory = (memoryData: Omit<VoiceMemory, 'id' | 'createdDate' | 'isLocked'>) => {
-    const newMemory: VoiceMemory = {
-      ...memoryData,
-      id: `memory_${Date.now()}_${Math.random().toString(36).substring(2)}`,
-      createdDate: new Date(),
-      isLocked: new Date() < memoryData.unlockDate
-    };
+  const refreshMemories = async () => {
+    if (!isConnected || accounts.length === 0) return;
 
-    setMemories(prev => [newMemory, ...prev]);
-    return newMemory.id;
+    setIsLoading(true);
+    try {
+      const userMemories = await storage.getUserMemories(accounts[0]);
+      
+      const memoriesWithDuration = userMemories.map(memory => ({
+        ...memory,
+        unlockDate: new Date(memory.unlockDate),
+        createdDate: new Date(memory.createdDate),
+        duration: memory.duration || 0
+      }));
+
+      setMemories(memoriesWithDuration);
+    } catch (error) {
+      console.error('Failed to load memories:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const addMemory = async (memoryData: Omit<VoiceMemory, 'id' | 'createdDate' | 'isLocked'>): Promise<string> => {
+    if (!isConnected || accounts.length === 0) {
+      throw new Error('Wallet not connected');
+    }
+
+    if (!memoryData.audioBlob) {
+      throw new Error('Audio blob is required');
+    }
+
+    setIsLoading(true);
+    try {
+      // Store using AlgoNode IPFS + Algorand
+      const result = await storage.storeVoiceMemory(memoryData.audioBlob, {
+        title: memoryData.title,
+        note: memoryData.note,
+        unlockDate: memoryData.unlockDate,
+        emotion: memoryData.emotion,
+        userAddress: accounts[0]
+      });
+
+      // Create local memory object
+      const newMemory: VoiceMemory = {
+        ...memoryData,
+        id: result.memoryId,
+        createdDate: new Date(),
+        isLocked: new Date() < memoryData.unlockDate,
+        ipfsCid: result.ipfsCid,
+        contractId: result.contractId
+      };
+
+      setMemories(prev => [newMemory, ...prev]);
+      return result.memoryId;
+
+    } catch (error) {
+      console.error('Failed to add memory:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getMemory = (id: string): VoiceMemory | undefined => {
@@ -117,7 +151,9 @@ export const MemoryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addMemory,
         getMemory,
         updateMemory,
-        deleteMemory
+        deleteMemory,
+        refreshMemories,
+        isLoading
       }}
     >
       {children}
